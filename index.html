@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+        <meta charset="utf-8">
+        <title>dafencec</title>
+        <meta name="description" content="test client for dafence server">
+        <script src="http://code.jquery.com/jquery-latest.min.js"></script>
+        <script type="text/javascript">
+var pos, map;
+var getMap = function(){
+    $.getScript('map.js?pos=' + pos.join(','), function(){
+        drawMap();
+    });
+}
+
+var owner = 'root';
+var setOwner = function(i){
+    console.log(owner + ' tries to own ' + i);
+    $.getScript('own.js?pos=' + pos.join(',') + '&owner=' + owner, function(){
+        drawMap();
+    });
+}
+
+var mapEl, curposEl, backbtnEl;
+var drawMap = function(){
+    var rowEl;
+    curposEl.text(pos);
+    if(pos.length > 0) backbtnEl.attr('disabled', false);
+    else backbtnEl.attr('disabled', true);
+    mapEl.empty();
+    $.each(map, function(i, cell){
+        if(0 === i % 10) rowEl = $('<tr>').appendTo(mapEl);
+        $('<td>').text(cell).appendTo(rowEl).mousedown(function(e){
+            if(1 === e.which){
+                pos.push(i);
+                getMap();
+            }else{
+                setOwner(i);
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
+    });
+}
+
+$(function(){
+    pos = location.search.match(/[?&]pos=([^&]*)/);
+    pos = pos && pos[1] && pos[1].split(',') || [1, 2, 3, 4];
+    curposEl = $('#curpos');
+    backbtnEl = $('#back').click(function(){
+        pos.pop();
+        getMap();
+    });
+    mapEl = $('#map');
+    getMap();
+});
+        </script>
+    </head>
+    <body oncontextmenu="return false;">
+        <div>Currently at<div id="curpos"></div><button id="back">Back</button><table id="map"></table></div>
+    </body>
+</html>
