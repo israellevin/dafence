@@ -7,54 +7,71 @@
         <meta name="description" content="test client for dafence server">
         <script src="http://code.jquery.com/jquery-latest.min.js"></script>
         <script type="text/javascript">
-var pos, map;
-var getMap = function(){
-    $.getScript('map.js?pos=' + pos.join(','), function(){
-        drawMap();
-    });
-}
 
-var owner = 'root';
-var setOwner = function(i){
-    console.log(owner + ' tries to own ' + i);
-    $.getScript('own.js?pos=' + pos.join(',') + '&owner=' + owner, function(){
-        drawMap();
+var get = function(url, callback){
+    $.ajax({
+        url: url,
+        dataType: 'jsonp',
+        success:function(data){
+            callback(data);
+        },
+        error:function(){
+            console.log('Unable to retrieve ' + url);
+        }
     });
-}
+};
 
-var mapEl, curposEl, backbtnEl;
-var drawMap = function(){
-    var rowEl;
-    curposEl.text(pos);
-    if(pos.length > 0) backbtnEl.attr('disabled', false);
-    else backbtnEl.attr('disabled', true);
-    mapEl.empty();
-    $.each(map, function(i, cell){
-        if(0 === i % 10) rowEl = $('<tr>').appendTo(mapEl);
-        $('<td>').text(cell).appendTo(rowEl).mousedown(function(e){
-            if(1 === e.which){
-                pos.push(i);
-                getMap();
-            }else{
-                setOwner(i);
-            }
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
+var player = {
+    name: 'root',
+    get: function(name){
+    },
+    claim: function(pos){
+        get('claim.jsonp?name=' + player.name + '&pos=' + pos.join(','), function(data){
+            console.log(data);
+            map.update();
         });
-    });
-}
+    }
+};
+
+var map = {
+    update: function(){
+        get('map.jsonp?pos=' + map.pos.join(','), function(data){
+            map.table.empty();
+            var row;
+            $.each(data, function(i, cell){
+                if(0 === i % 10) row = $('<tr>').appendTo(map.table);
+                $('<td>').text(cell[0]).css('background', cell[1]).appendTo(row)
+                .mousedown(function(e){
+                    if(1 === e.which){
+                        var claim = map.pos.slice()
+                        claim.push(i);
+                        player.claim(claim);
+                    }else{
+                        map.pos.push(i);
+                        map.update();
+                    }
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return false;
+                });
+            });
+            map.label.text(map.pos);
+            if(map.pos.length > 0) map.backBtn.attr('disabled', false);
+            else map.backBtn.attr('disabled', true);
+        });
+    }
+};
 
 $(function(){
-    pos = location.search.match(/[?&]pos=([^&]*)/);
-    pos = pos && pos[1] && pos[1].split(',') || [1, 2, 3, 4];
-    curposEl = $('#curpos');
-    backbtnEl = $('#back').click(function(){
-        pos.pop();
-        getMap();
+    var qpos = location.search.match(/[?&]pos=([^&]*)/);
+    map.pos = qpos && qpos[1] && qpos[1].split(',') || [] //[1, 2, 3, 4];
+    map.table = $('#map');
+    map.label = $('#curpos');
+    map.backBtn = $('#back').click(function(){
+        map.pos.pop();
+        map.update();
     });
-    mapEl = $('#map');
-    getMap();
+    map.update();
 });
         </script>
     </head>
