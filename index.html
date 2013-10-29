@@ -64,7 +64,7 @@ var map = {
 
 $(function(){
     var qpos = location.search.match(/[?&]pos=([^&]*)/);
-    map.pos = qpos && qpos[1] && qpos[1].split(',') || [] //[1, 2, 3, 4];
+    map.pos = qpos && qpos[1] && qpos[1].split(',') || [1, 2, 3, 4];
     map.table = $('#map');
     map.label = $('#curpos');
     map.backBtn = $('#back').click(function(){
