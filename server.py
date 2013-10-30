@@ -5,7 +5,7 @@ class Player(object):
         self.name = name
         self.color = color
 empty = Player('empty', 'transparent')
-players = {'empty': empty, 'root': Player('root', 'red')}
+players = {'empty': empty, 'root': Player('root', 'blue')}
 
 width = 10
 height = 10
