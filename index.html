@@ -8,30 +8,45 @@
         <script src="http://code.jquery.com/jquery-latest.min.js"></script>
         <script type="text/javascript">
 
+var log = function(msg){
+    $('#log').prepend($('<div>').text(msg));
+};
+
 var get = function(url, callback){
     $.ajax({
         url: url,
         dataType: 'jsonp',
         success:function(data){
+            if('string' === typeof data.error) console.log(data);
             callback(data);
         },
         error:function(){
-            console.log('Unable to retrieve ' + url);
+            log('Unable to retrieve ' + url);
         }
     });
 };
-
 var player = {
-    name: 'root',
-    get: function(name){
+    get: function(name, color){
+        var query = '?name=' + name;
+        if('string' === typeof color) query += '&color=' + color;
+        get('player.jsonp' + query, function(data){
+            if('string' === typeof data.error){
+                if('No color specified' === data.error) player.get(name, prompt('color'));
+                else log('Could not log in');
+                return false;
+            }
+            player.name = name;
+            player.color = color;
+        });
     },
     claim: function(pos){
         get('claim.jsonp?name=' + player.name + '&pos=' + pos.join(','), function(data){
-            console.log(data);
+            log(data + 'pts');
             map.update();
         });
     }
 };
+player.get(prompt('name'));
 
 var map = {
     update: function(){
@@ -77,5 +92,6 @@ $(function(){
     </head>
     <body oncontextmenu="return false;">
         <div>Currently at<div id="curpos"></div><button id="back">Back</button><table id="map"></table></div>
+        <div id="log"></div>
     </body>
 </html>

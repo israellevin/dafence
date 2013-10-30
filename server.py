@@ -34,6 +34,7 @@ class Cell(object):
             collected.append(cell)
         return cell, collected
     def claim(self, player):
+        if self.owner == player: return 0
         self.owner = player
         score = 1
         for interval in (1, -1, width, -width):
@@ -67,26 +68,35 @@ class Handler(SimpleHTTPRequestHandler):
         if '.jsonp' != url.path[-6:]: return SimpleHTTPRequestHandler.do_GET(self)
         query = parse_qs(url.query)
 
-        try: callback = query['callback'][0]
+        try: callback = query['callback'][-1]
         except KeyError: raise Exception('No callback specified')
 
         if '/player.jsonp' == url.path:
-            try: data = query['name'][0]
-            except KeyError: data = {'error': 'No name specified'}
+            if not 'name' in query: data = {'error': 'No name specified'}
+            else:
+                name = query['name'][-1]
+                if name in players: player = players[name]
+                else:
+                    if not 'color' in query: data = {'error': 'No color specified'}
+                    else:
+                        color = query['color'][-1]
+                        player = players[name] = Player(name, color)
+                try: data = (player.name, player.color)
+                except UnboundLocalError: pass
         else:
-            try: curboard = getboard([int(i) for i in query['pos'][0].split(',')])
+            try: curboard = getboard([int(i) for i in query['pos'][-1].split(',')])
             except KeyError: curboard = board
             if '/map.jsonp' == url.path:
                 data = curboard.getmap()
             elif '/claim.jsonp' == url.path:
-                try: name = query['name'][0]
+                try: name = query['name'][-1]
                 except KeyError: data = {'error': 'No name specified'}
                 else:
-                    data = curboard.parent.claim(players[name])
+                    try: data = curboard.parent.claim(players[name])
+                    except KeyError: data = {'error': 'No player ' + name}
 
         try: data
         except NameError: data = {'error': 'Did not understand ' + url.path}
-
         self.send_response(200)
         self.send_header('Content-type', 'application/javascript')
         self.end_headers()
@@ -101,5 +111,4 @@ except:
     server.server_close()
     from sys import exc_info
     if 'KeyboardInterrupt' != exc_info()[0].__name__:
-        print 'An unexpected error has occured:'
         raise
