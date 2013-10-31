@@ -5,19 +5,37 @@
         <meta charset="utf-8">
         <title>dafencec</title>
         <meta name="description" content="test client for dafence server. Now, with an extra cook in the kitchen!">
+        <style>
+            #log{
+                float: left;
+            }
+            #map{
+                float: right;
+            }
+            table{
+                border-collapse: collapse;
+            }
+            td{
+                width: 5em;
+                height: 2em;
+                border: 1px solid black;
+                text-align: center;
+            }
+        </style>
         <script src="http://code.jquery.com/jquery-latest.min.js"></script>
         <script type="text/javascript">
 
-var log = function(msg){
+function log(msg){
+    console.log(msg);
     $('#log').prepend($('<div>').text(msg));
 };
 
-var get = function(url, callback){
+function get(url, callback){
     $.ajax({
         url: url,
         dataType: 'jsonp',
         success:function(data){
-            if('string' === typeof data.error) console.log(data);
+            if('string' === typeof data.error) log(data);
             callback(data);
         },
         error:function(){
@@ -25,73 +43,134 @@ var get = function(url, callback){
         }
     });
 };
+
+var cookie = {
+    name: escape('dafence'),
+    expression: new RegExp('(^|[; ])*' + this.name + '=([^;]*)'),
+    write: function(value){
+        document.cookie = this.name + '=' + escape(value) + '; path=/';
+    },
+    read: function(){
+        var match = document.cookie.match(this.expression)
+        if(null !== match && 3 === match.length) return match[2];
+        return false;
+    }
+}
+
 var player = {
-    get: function(name, color){
-        var query = '?name=' + name;
-        if('string' === typeof color) query += '&color=' + color;
+    login: function(){
+        if('' === player.nameInp.val()) return player.nameInp.focus().css('background-color', '#FF9999');
+        player.inputs.css('background-color', 'white');
+        var query = '?name=' + player.nameInp.val();
+        if(player.colorSpan.is(':visible')){
+            if('' === player.colorInp.val()) return player.colorInp.focus().css('background-color', '#FF9999');
+            query += '&color=' + player.colorInp.val();
+        }
         get('player.jsonp' + query, function(data){
             if('string' === typeof data.error){
-                if('No color specified' === data.error) player.get(name, prompt('color'));
+                if('No color specified' === data.error){
+                    player.colorSpan.fadeIn();
+                    player.colorInp.focus();
+                }
                 else log('Could not log in');
                 return false;
             }
-            player.name = name;
-            player.color = color;
+            player.name = data[0];
+            player.color = data[1];
+            player.inputs.css('background-color', 'white').val('');
+            player.state.css('background-color', player.color).text('playing as ' + player.name);
+            player.colorSpan.fadeOut();
+            cookie.write(player.name);
         });
     },
     claim: function(pos){
+        if('not logged in' === player.state.text()) return log('You have to be logged in to stake a claim');
         get('claim.jsonp?name=' + player.name + '&pos=' + pos.join(','), function(data){
-            log(data + 'pts');
+            log(player.name + ' just made ' + data + 'pts');
             map.update();
         });
     }
 };
-player.get(prompt('name'));
 
 var map = {
     update: function(){
         get('map.jsonp?pos=' + map.pos.join(','), function(data){
-            map.table.empty();
-            var row;
-            $.each(data, function(i, cell){
-                if(0 === i % 10) row = $('<tr>').appendTo(map.table);
-                $('<td>').text(cell[0]).css('background', cell[1]).appendTo(row)
-                .mousedown(function(e){
-                    if(1 === e.which){
-                        var claim = map.pos.slice()
-                        claim.push(i);
-                        player.claim(claim);
-                    }else{
-                        map.pos.push(i);
-                        map.update();
-                    }
-                    e.stopPropagation();
-                    e.preventDefault();
-                    return false;
-                });
+            map.cells.each(function(cellIdx, cell){
+                cell = $(cell).text(data[cellIdx][0]).css('background-color', data[cellIdx][1]);
             });
-            map.label.text(map.pos);
-            if(map.pos.length > 0) map.backBtn.attr('disabled', false);
-            else map.backBtn.attr('disabled', true);
+            map.posEl.text(map.pos);
+            if(map.pos.length > 0) map.zoomOBtn.attr('disabled', false);
+            else map.zoomOBtn.attr('disabled', true);
         });
     }
 };
 
 $(function(){
+    var mapDiv = $('#map');
     var qpos = location.search.match(/[?&]pos=([^&]*)/);
     map.pos = qpos && qpos[1] && qpos[1].split(',') || [1, 2, 3, 4];
-    map.table = $('#map');
-    map.label = $('#curpos');
-    map.backBtn = $('#back').click(function(){
+    map.posEl = mapDiv.find('#curpos');
+    map.zoomOBtn = $('#zoomout').click(function(){
         map.pos.pop();
         map.update();
     });
+    map.cells = mapDiv.find('td').mousedown(function(e){
+        var cellIdx = parseInt(e.target.getAttribute('id').slice(4), 10);
+        if(1 === e.which){
+            var claim = map.pos.slice()
+            claim.push(cellIdx);
+            player.claim(claim);
+        }else{
+            map.pos.push(cellIdx);
+            map.update();
+        }
+        return false;
+    });
     map.update();
+
+    player.state = $('#state').text('not logged in');
+    player.nameSpan = $('#nameSpan');
+    player.colorSpan = $('#colorSpan');
+    player.nameInp = $('#name').focus();
+    player.colorInp = $('#color');
+    player.inputs = player.nameInp.add(player.colorInp).keypress(function(e){
+        if(13 === e.which) player.login();
+    });
+    $('#submit').click(function(e){
+        player.login();
+    });
+    cookie.value = cookie.read();
+    if('string' === typeof(cookie.value)){
+        player.nameInp.val(cookie.value);
+        player.login();
+    }
 });
         </script>
     </head>
     <body oncontextmenu="return false;">
-        <div>Currently at<div id="curpos"></div><button id="back">Back</button><table id="map"></table></div>
+        <div id="player">
+            <div id="state"></div>
+            <span id="nameSpan">Play as <input id="name"></span>
+            <span id="colorSpan" style="display: none;">with color <input id="color"></span>
+            <button id="submit">ok</button>
+        </div>
+        <div id="map">
+            <h3>Current position: <span id="curpos"></span>
+                <br><button id="zoomout">zoom out</button>
+            </h3>
+            <table>
+                <tr><td id="cell00"></td><td id="cell01"></td><td id="cell02"></td><td id="cell03"></td><td id="cell04"></td><td id="cell05"></td><td id="cell06"></td><td id="cell07"></td><td id="cell08"></td><td id="cell09"></td></tr>
+                <tr><td id="cell10"></td><td id="cell11"></td><td id="cell12"></td><td id="cell13"></td><td id="cell14"></td><td id="cell15"></td><td id="cell16"></td><td id="cell17"></td><td id="cell18"></td><td id="cell19"></td></tr>
+                <tr><td id="cell20"></td><td id="cell21"></td><td id="cell22"></td><td id="cell23"></td><td id="cell24"></td><td id="cell25"></td><td id="cell26"></td><td id="cell27"></td><td id="cell28"></td><td id="cell29"></td></tr>
+                <tr><td id="cell30"></td><td id="cell31"></td><td id="cell32"></td><td id="cell33"></td><td id="cell34"></td><td id="cell35"></td><td id="cell36"></td><td id="cell37"></td><td id="cell38"></td><td id="cell39"></td></tr>
+                <tr><td id="cell40"></td><td id="cell41"></td><td id="cell42"></td><td id="cell43"></td><td id="cell44"></td><td id="cell45"></td><td id="cell46"></td><td id="cell47"></td><td id="cell48"></td><td id="cell49"></td></tr>
+                <tr><td id="cell50"></td><td id="cell51"></td><td id="cell52"></td><td id="cell53"></td><td id="cell54"></td><td id="cell55"></td><td id="cell56"></td><td id="cell57"></td><td id="cell58"></td><td id="cell59"></td></tr>
+                <tr><td id="cell60"></td><td id="cell61"></td><td id="cell62"></td><td id="cell63"></td><td id="cell64"></td><td id="cell65"></td><td id="cell66"></td><td id="cell67"></td><td id="cell68"></td><td id="cell69"></td></tr>
+                <tr><td id="cell70"></td><td id="cell71"></td><td id="cell72"></td><td id="cell73"></td><td id="cell74"></td><td id="cell75"></td><td id="cell76"></td><td id="cell77"></td><td id="cell78"></td><td id="cell79"></td></tr>
+                <tr><td id="cell80"></td><td id="cell81"></td><td id="cell82"></td><td id="cell83"></td><td id="cell84"></td><td id="cell85"></td><td id="cell86"></td><td id="cell87"></td><td id="cell88"></td><td id="cell89"></td></tr>
+                <tr><td id="cell90"></td><td id="cell91"></td><td id="cell92"></td><td id="cell93"></td><td id="cell94"></td><td id="cell95"></td><td id="cell96"></td><td id="cell97"></td><td id="cell98"></td><td id="cell99"></td></tr>
+            </table>
+        </div>
         <div id="log"></div>
     </body>
 </html>
