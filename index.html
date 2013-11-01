@@ -35,7 +35,7 @@ function get(url, callback){
         url: url,
         dataType: 'jsonp',
         success:function(data){
-            if('string' === typeof data.error) log(data);
+            if('string' === typeof data.error) log(data.error);
             callback(data);
         },
         error:function(){
@@ -52,7 +52,7 @@ var cookie = {
     },
     read: function(){
         var match = document.cookie.match(this.expression)
-        if(null !== match && 3 === match.length) return match[2];
+        if(null !== match && 3 === match.length) return unescape(match[2]);
         return false;
     }
 }
@@ -61,10 +61,10 @@ var player = {
     login: function(){
         if('' === player.nameInp.val()) return player.nameInp.focus().css('background-color', '#FF9999');
         player.inputs.css('background-color', 'white');
-        var query = '?name=' + player.nameInp.val();
+        var query = '?name=' + escape(player.nameInp.val());
         if(player.colorSpan.is(':visible')){
-            if('' === player.colorInp.val()) return player.colorInp.focus().css('background-color', '#FF9999');
-            query += '&color=' + player.colorInp.val();
+            if('' === player.colorInp.val()) player.colorInp.focus().css('background-color', '#FF9999');
+            else query += '&color=' + escape(player.colorInp.val());
         }
         get('player.jsonp' + query, function(data){
             if('string' === typeof data.error){
@@ -75,8 +75,10 @@ var player = {
                 else log('Could not log in');
                 return false;
             }
-            player.name = data[0];
-            player.color = data[1];
+            player.name = player.nameInp.val();
+            player.nameEsc = escape(player.name);
+            player.color = data[0];
+            player.stakes = data[1];
             player.inputs.css('background-color', 'white').val('');
             player.state.css('background-color', player.color).text('playing as ' + player.name);
             player.colorSpan.fadeOut();
@@ -85,9 +87,11 @@ var player = {
     },
     claim: function(pos){
         if('not logged in' === player.state.text()) return log('You have to be logged in to stake a claim');
-        get('claim.jsonp?name=' + player.name + '&pos=' + pos.join(','), function(data){
-            log(player.name + ' just made ' + data + 'pts');
-            map.update();
+        get('claim.jsonp?name=' + player.nameEsc + '&pos=' + pos.join(','), function(data){
+            if('undefined' === typeof data.error){
+                log(player.name + ' just made ' + data + 'pts');
+                map.update();
+            }
         });
     }
 };
@@ -129,6 +133,7 @@ $(function(){
     map.update();
 
     player.state = $('#state').text('not logged in');
+    player.stakesDiv = $('#stakes');
     player.nameSpan = $('#nameSpan');
     player.colorSpan = $('#colorSpan');
     player.nameInp = $('#name').focus();
@@ -150,6 +155,7 @@ $(function(){
     <body oncontextmenu="return false;">
         <div id="player">
             <div id="state"></div>
+            <div id="stakes"></div>
             <span id="nameSpan">Play as <input id="name"></span>
             <span id="colorSpan" style="display: none;">with color <input id="color"></span>
             <button id="submit">ok</button>

@@ -1,9 +1,20 @@
 #!/usr/bin/python
 
+from time import time
 class Player(object):
     def __init__(self, name, color):
         self.name = name
         self.color = color
+        self.stakes = 5.0;
+        self.cells = set()
+        self.owntime = time()
+    def getstakes(self):
+        now = time()
+        print now - self.owntime
+        self.stakes += len(self.cells) * 0.1 * (now - self.owntime)
+        self.owntime = now
+        return self.stakes
+
 empty = Player('empty', 'transparent')
 players = {'empty': empty, 'root': Player('root', 'blue')}
 
@@ -34,7 +45,6 @@ class Cell(object):
             collected.append(cell)
         return cell, collected
     def claim(self, player):
-        if self.owner == player: return 0
         self.owner = player
         score = 1
         for interval in (1, -1, width, -width):
@@ -81,7 +91,10 @@ class Handler(SimpleHTTPRequestHandler):
                     else:
                         color = query['color'][-1]
                         player = players[name] = Player(name, color)
-                try: data = (player.name, player.color)
+                        print '???'
+                        print name
+                        print '???'
+                try: data = (player.color, player.stakes)
                 except UnboundLocalError: pass
         else:
             try: curboard = getboard([int(i) for i in query['pos'][-1].split(',')])
@@ -89,11 +102,22 @@ class Handler(SimpleHTTPRequestHandler):
             if '/map.jsonp' == url.path:
                 data = curboard.getmap()
             elif '/claim.jsonp' == url.path:
-                try: name = query['name'][-1]
-                except KeyError: data = {'error': 'No name specified'}
+                try:
+                    print '!!!'
+                    print query['name'][-1]
+                    print '!!!'
+                    player = players[query['name'][-1]]
+                except KeyError:
+                    data = {'error': 'Invalid player'}
                 else:
-                    try: data = curboard.parent.claim(players[name])
-                    except KeyError: data = {'error': 'No player ' + name}
+                    cell = curboard.parent
+                    if cell.owner is player: data = {'error': 'Can\'t reown your own ownage'}
+                    elif (player.getstakes()) < 1: data = {'error': player.name + ' is out of stakes'}
+                    else:
+                        score = cell.claim(player)
+                        player.stakes -= 1
+                        player.cells.add(curboard.parent)
+                        data = score;
 
         try: data
         except NameError: data = {'error': 'Did not understand ' + url.path}
