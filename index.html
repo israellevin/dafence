@@ -6,20 +6,28 @@
         <title>dafencec</title>
         <meta name="description" content="test client for dafence server. Now, with an extra cook in the kitchen!">
         <style>
-            #log{
-                float: left;
+            #state{
+                padding: 0.2em;
+                border: 0.2em solid black;
+                margin: 0.2em;
+
             }
-            #map{
-                float: right;
+            #mapContainer{
+                float: left;
+                width: 70%;
             }
             table{
                 border-collapse: collapse;
+                width: 100%;
+                height: 30em;
             }
             td{
-                width: 5em;
-                height: 2em;
-                border: 1px solid black;
+                border: 0.1em solid black;
                 text-align: center;
+            }
+            #log{
+                width: 25%;
+                float: right;
             }
         </style>
         <script src="http://code.jquery.com/jquery-latest.min.js"></script>
@@ -27,7 +35,7 @@
 
 function log(msg){
     console.log(msg);
-    $('#log').prepend($('<div>').text(msg));
+    if('string' === typeof msg) $('#log').prepend($('<div>').text(msg));
 };
 
 function get(url, callback){
@@ -35,7 +43,7 @@ function get(url, callback){
         url: url,
         dataType: 'jsonp',
         success:function(data){
-            if('string' === typeof data.error) log(data.error);
+            if(null !== data && 'string' === typeof data.error) log(data.error);
             callback(data);
         },
         error:function(){
@@ -48,10 +56,10 @@ var cookie = {
     name: escape('dafence'),
     expression: new RegExp('(^|[; ])*' + this.name + '=([^;]*)'),
     write: function(value){
-        document.cookie = this.name + '=' + escape(value) + '; path=/';
+        document.cookie = cookie.name + '=' + escape(value) + '; path=/';
     },
     read: function(){
-        var match = document.cookie.match(this.expression)
+        var match = document.cookie.match(cookie.expression)
         if(null !== match && 3 === match.length) return unescape(match[2]);
         return false;
     }
@@ -85,9 +93,16 @@ var player = {
             cookie.write(player.name);
         });
     },
-    claim: function(pos){
-        if('not logged in' === player.state.text()) return log('You have to be logged in to stake a claim');
-        get('claim.jsonp?name=' + player.nameEsc + '&pos=' + pos.join(','), function(data){
+    claim: function(row, col, pow){
+        if('undefined' === typeof player.name) return log('You have to be logged in to stake a claim');
+        get(
+            'claim.jsonp' +
+            '?name=' + player.nameEsc +
+            '&level=' + map.level +
+            '&row=' + row +
+            '&col=' + col +
+            '&pow=' + pow,
+        function(data){
             if('undefined' === typeof data.error){
                 log(player.name + ' just made ' + data + 'pts');
                 map.update();
@@ -98,40 +113,32 @@ var player = {
 
 var map = {
     update: function(){
-        get('map.jsonp?pos=' + map.pos.join(','), function(data){
-            map.cells.each(function(cellIdx, cell){
-                cell = $(cell).text(data[cellIdx][0]).css('background-color', data[cellIdx][1]);
-            });
-            map.posEl.text(map.pos);
-            if(map.pos.length > 0) map.zoomOBtn.attr('disabled', false);
-            else map.zoomOBtn.attr('disabled', true);
+        get(
+            'map.jsonp' +
+            '?level=' + map.level +
+            '&top=' + map.top +
+            '&bottom=' + map.bottom +
+            '&left=' + map.left +
+            '&right=' + map.right,
+        function(data){
+            var table, row, col, rowIdx, colIdx;
+            table = $('<table>');
+            for(rowIdx = map.top; rowIdx < map.bottom; rowIdx++){
+                row = $('<tr>').addClass('row' + rowIdx).appendTo(table);
+                for(colIdx = map.left; colIdx < map.right; colIdx++){
+                    cell = $('<td>').addClass('col' + colIdx).appendTo(row);
+                    data && data[rowIdx] && data[rowIdx][colIdx] && cell.css(
+                        'background-color', data[rowIdx][colIdx]
+                    );
+                }
+            }
+            map.mapDiv.empty().append(table);
+            map.posEl.text(map.level + ' - [' + map.top + ':' + map.bottom + '][' + map.left + ':' + map.right + ']');
         });
     }
 };
 
 $(function(){
-    var mapDiv = $('#map');
-    var qpos = location.search.match(/[?&]pos=([^&]*)/);
-    map.pos = qpos && qpos[1] && qpos[1].split(',') || [1, 2, 3, 4];
-    map.posEl = mapDiv.find('#curpos');
-    map.zoomOBtn = $('#zoomout').click(function(){
-        map.pos.pop();
-        map.update();
-    });
-    map.cells = mapDiv.find('td').mousedown(function(e){
-        var cellIdx = parseInt(e.target.getAttribute('id').slice(4), 10);
-        if(1 === e.which){
-            var claim = map.pos.slice()
-            claim.push(cellIdx);
-            player.claim(claim);
-        }else{
-            map.pos.push(cellIdx);
-            map.update();
-        }
-        return false;
-    });
-    map.update();
-
     player.state = $('#state').text('not logged in');
     player.stakesDiv = $('#stakes');
     player.nameSpan = $('#nameSpan');
@@ -149,6 +156,36 @@ $(function(){
         player.nameInp.val(cookie.value);
         player.login();
     }
+    try{
+        map.pos = location.search.match(/[?&]pos=([^&#\/]*)/)[1].split(',');
+        $.map(map.pos, function(s){
+            var i = parseInt(s, 10);
+            if(isNaN(i)) throw new Error('NaN positional param');
+            return i;
+        });
+        if(map.pos.length !== 5) throw new Error('Not enough positional parameters');
+        map.level = map.pos[0];
+        map.top = map.pos[1];
+        map.bottom = map.pos[2];
+        map.left = map.pos[3];
+        map.right = map.pos[4];
+    }catch(e){
+        log(e);
+        map.level = 0;
+        map.top = 0;
+        map.bottom = 9;
+        map.left = 0;
+        map.right = 9;
+    }
+
+    map.mapDiv = $('#map').click(function(e){
+        cell = $(e.target);
+        col = parseInt(cell.attr('class').slice(3), 10);
+        row = parseInt(cell.parent().attr('class').slice(3), 10);
+        player.claim(row, col, 1);
+    });
+    map.posEl = $('#curpos');
+    map.update();
 });
         </script>
     </head>
@@ -160,22 +197,10 @@ $(function(){
             <span id="colorSpan" style="display: none;">with color <input id="color"></span>
             <button id="submit">ok</button>
         </div>
-        <div id="map">
-            <h3>Current position: <span id="curpos"></span>
-                <br><button id="zoomout">zoom out</button>
-            </h3>
-            <table>
-                <tr><td id="cell00"></td><td id="cell01"></td><td id="cell02"></td><td id="cell03"></td><td id="cell04"></td><td id="cell05"></td><td id="cell06"></td><td id="cell07"></td><td id="cell08"></td><td id="cell09"></td></tr>
-                <tr><td id="cell10"></td><td id="cell11"></td><td id="cell12"></td><td id="cell13"></td><td id="cell14"></td><td id="cell15"></td><td id="cell16"></td><td id="cell17"></td><td id="cell18"></td><td id="cell19"></td></tr>
-                <tr><td id="cell20"></td><td id="cell21"></td><td id="cell22"></td><td id="cell23"></td><td id="cell24"></td><td id="cell25"></td><td id="cell26"></td><td id="cell27"></td><td id="cell28"></td><td id="cell29"></td></tr>
-                <tr><td id="cell30"></td><td id="cell31"></td><td id="cell32"></td><td id="cell33"></td><td id="cell34"></td><td id="cell35"></td><td id="cell36"></td><td id="cell37"></td><td id="cell38"></td><td id="cell39"></td></tr>
-                <tr><td id="cell40"></td><td id="cell41"></td><td id="cell42"></td><td id="cell43"></td><td id="cell44"></td><td id="cell45"></td><td id="cell46"></td><td id="cell47"></td><td id="cell48"></td><td id="cell49"></td></tr>
-                <tr><td id="cell50"></td><td id="cell51"></td><td id="cell52"></td><td id="cell53"></td><td id="cell54"></td><td id="cell55"></td><td id="cell56"></td><td id="cell57"></td><td id="cell58"></td><td id="cell59"></td></tr>
-                <tr><td id="cell60"></td><td id="cell61"></td><td id="cell62"></td><td id="cell63"></td><td id="cell64"></td><td id="cell65"></td><td id="cell66"></td><td id="cell67"></td><td id="cell68"></td><td id="cell69"></td></tr>
-                <tr><td id="cell70"></td><td id="cell71"></td><td id="cell72"></td><td id="cell73"></td><td id="cell74"></td><td id="cell75"></td><td id="cell76"></td><td id="cell77"></td><td id="cell78"></td><td id="cell79"></td></tr>
-                <tr><td id="cell80"></td><td id="cell81"></td><td id="cell82"></td><td id="cell83"></td><td id="cell84"></td><td id="cell85"></td><td id="cell86"></td><td id="cell87"></td><td id="cell88"></td><td id="cell89"></td></tr>
-                <tr><td id="cell90"></td><td id="cell91"></td><td id="cell92"></td><td id="cell93"></td><td id="cell94"></td><td id="cell95"></td><td id="cell96"></td><td id="cell97"></td><td id="cell98"></td><td id="cell99"></td></tr>
-            </table>
+        <div id="mapContainer">
+            <h3 id="mapHead">Current position: <span id="curpos"></span></h3>
+            <div id="map">
+            </div>
         </div>
         <div id="log"></div>
     </body>

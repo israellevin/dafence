@@ -7,67 +7,51 @@ class Player(object):
         self.color = color
         self.stakes = 5.0;
         self.cells = set()
-        self.owntime = time()
+        self.updatetime = time()
     def getstakes(self):
         now = time()
-        print now - self.owntime
-        self.stakes += len(self.cells) * 0.1 * (now - self.owntime)
-        self.owntime = now
+        self.stakes += len(self.cells) * 0.1 * (now - self.updatetime)
+        self.updatetime = now
         return self.stakes
+players = {'root': Player('root', 'blue')}
 
-empty = Player('empty', 'transparent')
-players = {'empty': empty, 'root': Player('root', 'blue')}
+cells = {0: {0: {0: players['root']}}}
+def getcell(level, row, col):
+    try: return cells[level][row][col]
+    except KeyError: return None
+def getcellcolor(level, row, col):
+    try: return getcell(level, row, col).color
+    except AttributeError: return None
+def getrowcolors(level, row, left, right):
+    try: cells[level][row]
+    except KeyError: return None
+    return {col: getcellcolor(level, row, col) for col in range(left, right)}
+def getsquarecolors(level, top, bottom, left, right):
+    try: cells[level]
+    except KeyError: return None
+    return {row: getrowcolors(level, row, left, right) for row in range(top, bottom)}
 
-width = 10
-height = 10
-size = width * height
-horizon = (width + height) / 4
-class Cell(object):
-    def __init__(self, parent, pos, owner):
-        self.parent = parent
-        self.pos = pos
-        self.owner = owner
-        self.board = None
-    def scan(self, interval):
-        collected = []
-        cellidx = self.pos[-1]
-        startmod = cellidx % width
-        cell = self.parent.cells[cellidx]
-        for i in range(horizon):
-            cellidx += interval
-            cellmod = cellidx % width
-            if 1 == interval and cellmod < startmod: break
-            if -1 == interval and cellmod > startmod: break
-            if cellidx < 0 or cellidx >= size: break
-            cellmod = cellidx
-            cell = self.parent.cells[cellidx]
-            if cell.owner.name != 'empty': break
-            collected.append(cell)
-        return cell, collected
-    def claim(self, player):
-        self.owner = player
-        score = 1
-        for interval in (1, -1, width, -width):
-            cell, collected = self.scan(interval)
-            if cell.owner.name == player.name:
-                score += sum([cell.claim(player) for cell in collected])
-        return score
+claimrange = 5
+def claim(player, level, row, col, power):
+    try: cells[level]
+    except KeyError: cells[level] = {}
+    try: cells[level][row]
+    except KeyError: cells[level][row] = {}
+    if getcell(level, row, col) is player: return 0
+    cells[level][row][col] = player
+    player.cells.add((level, row, col))
+    score = 1
 
-class Board(object):
-    def __init__(self, parent):
-        self.parent = parent
-        self.cells = [Cell(self, parent.pos + [i], empty) for i in range(size)]
-    def getmap(self): return [(cell.owner.name, cell.owner.color) for cell in self.cells]
-board = Board(Cell(None, [], empty))
-
-def getboard(pos):
-    curboard = board
-    for cellidx in pos:
-        cell = curboard.cells[cellidx]
-        if cell.board is None:
-            cell.board = Board(cell)
-        curboard = cell.board
-    return curboard
+    for direction in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        annexed = []
+        for offset in range(1, claimrange + 1):
+            currow, curcol = map(lambda p, d: p + (d * offset), (row, col), direction)
+            cell = getcell(level, currow, curcol)
+            if cell is not None: break
+            annexed.append((currow, curcol))
+        if cell is player:
+            score += sum([claim(player, level, currow, curcol, power) for currow, curcol in annexed])
+    return score
 
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 from urlparse import urlparse, parse_qs
@@ -77,48 +61,45 @@ class Handler(SimpleHTTPRequestHandler):
         url = urlparse(self.path)
         if '.jsonp' != url.path[-6:]: return SimpleHTTPRequestHandler.do_GET(self)
         query = parse_qs(url.query)
-
-        try: callback = query['callback'][-1]
-        except KeyError: raise Exception('No callback specified')
+        if 'callback' not in query: raise Exception('No callback specified')
+        callback = query['callback'][-1]
 
         if '/player.jsonp' == url.path:
-            if not 'name' in query: data = {'error': 'No name specified'}
+            if 'name' not in query: data = {'error': 'No name specified'}
             else:
                 name = query['name'][-1]
                 if name in players: player = players[name]
                 else:
-                    if not 'color' in query: data = {'error': 'No color specified'}
-                    else:
-                        color = query['color'][-1]
-                        player = players[name] = Player(name, color)
-                        print '???'
-                        print name
-                        print '???'
-                try: data = (player.color, player.stakes)
-                except UnboundLocalError: pass
-        else:
-            try: curboard = getboard([int(i) for i in query['pos'][-1].split(',')])
-            except KeyError: curboard = board
-            if '/map.jsonp' == url.path:
-                data = curboard.getmap()
-            elif '/claim.jsonp' == url.path:
-                try:
-                    print '!!!'
-                    print query['name'][-1]
-                    print '!!!'
-                    player = players[query['name'][-1]]
-                except KeyError:
-                    data = {'error': 'Invalid player'}
+                    if 'color' not in query: data = {'error': 'No color specified'}
+                    else: player = players[name] = Player(name, query['color'][-1])
+            try: data = (player.color, player.stakes)
+            except UnboundLocalError: pass
+        elif '/map.jsonp' == url.path:
+            try: data = getsquarecolors(
+                int(query['level'][-1]),
+                int(query['top'][-1]),
+                int(query['bottom'][-1]),
+                int(query['left'][-1]),
+                int(query['right'][-1])
+            )
+            except (AttributeError, ValueError) as e:
+                print e
+                data = {'error': 'No valid position specified'}
+        elif '/claim.jsonp' == url.path:
+            try:
+                player = players[query['name'][-1]]
+                level = int(query['level'][-1])
+                row = int(query['row'][-1])
+                col = int(query['col'][-1])
+                power = int(query['pow'][-1])
+            except (AttributeError, ValueError) as e:
+                print e
+                data = {'error': 'Invalid claim'}
+            else:
+                if(player.getstakes() < power): data = {'error': 'Not enough stakes'}
                 else:
-                    cell = curboard.parent
-                    if cell.owner is player: data = {'error': 'Can\'t reown your own ownage'}
-                    elif (player.getstakes()) < 1: data = {'error': player.name + ' is out of stakes'}
-                    else:
-                        score = cell.claim(player)
-                        player.stakes -= 1
-                        player.cells.add(curboard.parent)
-                        data = score;
-
+                    player.stakes -= 1
+                    data = claim(player, level, row, col, power)
         try: data
         except NameError: data = {'error': 'Did not understand ' + url.path}
         self.send_response(200)
