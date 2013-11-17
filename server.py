@@ -1,57 +1,113 @@
 #!/usr/bin/python
 
+ownerships = {}
+def getowner(level, row, col):
+    try: return ownerships[level][row][col]
+    except KeyError: return None
+def getownercolor(level, row, col):
+    try: return getowner(level, row, col).color
+    except AttributeError: return None
+def getrowcolors(level, row, left, right):
+    try: ownerships[level][row]
+    except KeyError: return None
+    return {col: getownercolor(level, row, col) for col in range(left, right)}
+def getsquarecolors(level, top, bottom, left, right):
+    try: ownerships[level]
+    except KeyError: return None
+    return {row: getrowcolors(level, row, left, right) for row in range(top, bottom)}
+
 from time import time
 class Player(object):
     def __init__(self, name, color):
         self.name = name
         self.color = color
         self.stakes = 5.0;
-        self.cells = set()
+        self.ownerships = set()
         self.updatetime = time()
     def getstakes(self):
         now = time()
-        self.stakes += len(self.cells) * 0.1 * (now - self.updatetime)
+        self.stakes += len(self.ownerships) * 0.1 * (now - self.updatetime)
         self.updatetime = now
         return self.stakes
+    def surrender(self, pos):
+        self.ownerships.remove(pos)
+        self.getstakes()
 players = {'root': Player('root', 'blue')}
-
-cells = {0: {0: {0: players['root']}}}
-def getcell(level, row, col):
-    try: return cells[level][row][col]
-    except KeyError: return None
-def getcellcolor(level, row, col):
-    try: return getcell(level, row, col).color
-    except AttributeError: return None
-def getrowcolors(level, row, left, right):
-    try: cells[level][row]
-    except KeyError: return None
-    return {col: getcellcolor(level, row, col) for col in range(left, right)}
-def getsquarecolors(level, top, bottom, left, right):
-    try: cells[level]
-    except KeyError: return None
-    return {row: getrowcolors(level, row, left, right) for row in range(top, bottom)}
 
 claimrange = 5
 def claim(player, level, row, col, power):
-    try: cells[level]
-    except KeyError: cells[level] = {}
-    try: cells[level][row]
-    except KeyError: cells[level][row] = {}
-    if getcell(level, row, col) is player: return 0
-    cells[level][row][col] = player
-    player.cells.add((level, row, col))
+    if getowner(level, row, col) is player: return 0
+
+    try: ownerships[level]
+    except KeyError: ownerships[level] = {}
+    try: ownerships[level][row]
+    except KeyError: ownerships[level][row] = {}
+
+    pos = (level, row, col)
+    try: oldowner = ownerships[level][row][col]
+    except KeyError: pass
+    else: oldowner.surrender(pos)
+    player.stakes -= power
+    ownerships[level][row][col] = player
+    player.ownerships.add(pos)
     score = 1
 
     for direction in ((0, 1), (0, -1), (1, 0), (-1, 0)):
         annexed = []
         for offset in range(1, claimrange + 1):
             currow, curcol = map(lambda p, d: p + (d * offset), (row, col), direction)
-            cell = getcell(level, currow, curcol)
-            if cell is not None: break
+            owner = getowner(level, currow, curcol)
+            if owner is player:
+                score += sum([
+                    claim(player, level, currow, curcol, power)
+                    for currow, curcol in annexed
+                ])
+                break
             annexed.append((currow, curcol))
-        if cell is player:
-            score += sum([claim(player, level, currow, curcol, power) for currow, curcol in annexed])
     return score
+claim(players['root'], 0, 0, 0, 1)
+
+def handleclaim(args):
+    try:
+        player = players[args['name'][-1]]
+        level = int(args['level'][-1])
+        row = int(args['row'][-1])
+        col = int(args['col'][-1])
+        power = int(args['pow'][-1])
+    except (KeyError, ValueError) as e: return {
+        'error': 'Invalid claim',
+        'exception': str(e)
+    }
+    else:
+        if player.getstakes() < power: return {'error': 'Not enough stakes'}
+        if getowner(level, row, col) is player: return {'error': 'No double dipping'}
+        return claim(player, level, row, col, power)
+
+def handlemap(args):
+    try: data = {'colors': getsquarecolors(
+        int(args['level'][-1]),
+        int(args['top'][-1]),
+        int(args['bottom'][-1]),
+        int(args['left'][-1]),
+        int(args['right'][-1])
+    )}
+    except (KeyError, ValueError) as e: data = {
+        'error': 'No valid position specified',
+        'exception': str(e)
+    }
+    try: player = players[args['name'][-1]]
+    except KeyError: pass
+    else: data['stakes'], data['ownerships'] = player.getstakes(), len(player.ownerships)
+    return data
+
+def handleplayer(args):
+    try: name = args['name'][-1]
+    except KeyError: return {'error': 'No name specified'}
+    try: player = players[name]
+    except KeyError:
+        try: player = players[name] = Player(name, args['color'][-1])
+        except KeyError: return {'error': 'No color specified'}
+    return (player.color, player.stakes)
 
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 from urlparse import urlparse, parse_qs
@@ -64,44 +120,11 @@ class Handler(SimpleHTTPRequestHandler):
         if 'callback' not in query: raise Exception('No callback specified')
         callback = query['callback'][-1]
 
-        if '/player.jsonp' == url.path:
-            if 'name' not in query: data = {'error': 'No name specified'}
-            else:
-                name = query['name'][-1]
-                if name in players: player = players[name]
-                else:
-                    if 'color' not in query: data = {'error': 'No color specified'}
-                    else: player = players[name] = Player(name, query['color'][-1])
-            try: data = (player.color, player.stakes)
-            except UnboundLocalError: pass
-        elif '/map.jsonp' == url.path:
-            try: data = getsquarecolors(
-                int(query['level'][-1]),
-                int(query['top'][-1]),
-                int(query['bottom'][-1]),
-                int(query['left'][-1]),
-                int(query['right'][-1])
-            )
-            except (AttributeError, ValueError) as e:
-                print e
-                data = {'error': 'No valid position specified'}
-        elif '/claim.jsonp' == url.path:
-            try:
-                player = players[query['name'][-1]]
-                level = int(query['level'][-1])
-                row = int(query['row'][-1])
-                col = int(query['col'][-1])
-                power = int(query['pow'][-1])
-            except (AttributeError, ValueError) as e:
-                print e
-                data = {'error': 'Invalid claim'}
-            else:
-                if(player.getstakes() < power): data = {'error': 'Not enough stakes'}
-                else:
-                    player.stakes -= 1
-                    data = claim(player, level, row, col, power)
-        try: data
-        except NameError: data = {'error': 'Did not understand ' + url.path}
+        if '/player.jsonp' == url.path: data = handleplayer(query)
+        elif '/map.jsonp' == url.path: data = handlemap(query)
+        elif '/claim.jsonp' == url.path: data = handleclaim(query)
+        else: data = {'error': 'Did not understand ' + url.path}
+
         self.send_response(200)
         self.send_header('Content-type', 'application/javascript')
         self.end_headers()

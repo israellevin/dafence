@@ -127,8 +127,8 @@ var map = {
                 row = $('<tr>').addClass('row' + rowIdx).appendTo(table);
                 for(colIdx = map.left; colIdx < map.right; colIdx++){
                     cell = $('<td>').addClass('col' + colIdx).appendTo(row);
-                    data && data[rowIdx] && data[rowIdx][colIdx] && cell.css(
-                        'background-color', data[rowIdx][colIdx]
+                    data && data.colors && data.colors[rowIdx] && data.colors[rowIdx][colIdx] && cell.css(
+                        'background-color', data.colors[rowIdx][colIdx]
                     );
                 }
             }
@@ -193,6 +193,7 @@ $(function(){
         <div id="player">
             <div id="state"></div>
             <div id="stakes"></div>
+            <div id="cells owned"></div>
             <span id="nameSpan">Play as <input id="name"></span>
             <span id="colorSpan" style="display: none;">with color <input id="color"></span>
             <button id="submit">ok</button>
