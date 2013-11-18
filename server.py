@@ -30,8 +30,8 @@ class Player(object):
         self.updatetime = now
         return self.stakes
     def surrender(self, pos):
-        self.ownerships.remove(pos)
         self.getstakes()
+        self.ownerships.remove(pos)
 players = {'root': Player('root', 'blue')}
 
 claimrange = 5
@@ -47,7 +47,6 @@ def claim(player, level, row, col, power):
     try: oldowner = ownerships[level][row][col]
     except KeyError: pass
     else: oldowner.surrender(pos)
-    player.stakes -= power
     ownerships[level][row][col] = player
     player.ownerships.add(pos)
     score = 1
@@ -79,8 +78,10 @@ def handleclaim(args):
         'exception': str(e)
     }
     else:
+        print player.getstakes()
         if player.getstakes() < power: return {'error': 'Not enough stakes'}
         if getowner(level, row, col) is player: return {'error': 'No double dipping'}
+        player.stakes -= power
         return claim(player, level, row, col, power)
 
 def handlemap(args):

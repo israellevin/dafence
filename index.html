@@ -87,6 +87,7 @@ var player = {
             player.nameEsc = escape(player.name);
             player.color = data[0];
             player.stakes = data[1];
+            player.stakesSpan.text(data[1]);
             player.inputs.css('background-color', 'white').val('');
             player.state.css('background-color', player.color).text('playing as ' + player.name);
             player.colorSpan.fadeOut();
@@ -119,9 +120,12 @@ var map = {
             '&top=' + map.top +
             '&bottom=' + map.bottom +
             '&left=' + map.left +
-            '&right=' + map.right,
+            '&right=' + map.right +
+            ('string' === typeof player.nameEsc ? '&name=' + player.nameEsc : ''),
         function(data){
             var table, row, col, rowIdx, colIdx;
+            if('number' === typeof data.stakes) player.stakesSpan.text(parseInt(data.stakes, 10));
+            if('number' === typeof data.ownerships) player.ownedSpan.text(data.ownerships);
             table = $('<table>');
             for(rowIdx = map.top; rowIdx < map.bottom; rowIdx++){
                 row = $('<tr>').addClass('row' + rowIdx).appendTo(table);
@@ -140,7 +144,8 @@ var map = {
 
 $(function(){
     player.state = $('#state').text('not logged in');
-    player.stakesDiv = $('#stakes');
+    player.stakesSpan = $('#stakes');
+    player.ownedSpan = $('#owned');
     player.nameSpan = $('#nameSpan');
     player.colorSpan = $('#colorSpan');
     player.nameInp = $('#name').focus();
@@ -192,8 +197,8 @@ $(function(){
     <body oncontextmenu="return false;">
         <div id="player">
             <div id="state"></div>
-            <div id="stakes"></div>
-            <div id="cells owned"></div>
+            <div>Stakes: <span id="stakes"></span></div>
+            <div>Owned: <span id="owned"></span></div>
             <span id="nameSpan">Play as <input id="name"></span>
             <span id="colorSpan" style="display: none;">with color <input id="color"></span>
             <button id="submit">ok</button>
@@ -206,3 +211,6 @@ $(function(){
         <div id="log"></div>
     </body>
 </html>
+<!--
+vim: ft=javascript
+-->
