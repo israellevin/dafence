@@ -72,7 +72,10 @@ var player = {
         var query = '?name=' + escape(player.nameInp.val());
         if(player.colorSpan.is(':visible')){
             if('' === player.colorInp.val()) player.colorInp.focus().css('background-color', '#FF9999');
-            else query += '&color=' + escape(player.colorInp.val());
+            else{
+                player.state.css('background-color', player.colorInp.val());
+                query += '&color=' + escape(player.state.css('background-color'));
+            }
         }
         get('player.jsonp' + query, function(data){
             if('string' === typeof data.error){
@@ -85,9 +88,10 @@ var player = {
             }
             player.name = player.nameInp.val();
             player.nameEsc = escape(player.name);
-            player.color = data[0];
-            player.stakes = data[1];
-            player.stakesSpan.text(data[1]);
+            player.color = data.color;
+            player.stakes = data.stakes;
+            player.stakesSpan.text(data.stakes);
+            player.ownedSpan.text(data.ownerships);
             player.inputs.css('background-color', 'white').val('');
             player.state.css('background-color', player.color).text('playing as ' + player.name);
             player.colorSpan.fadeOut();
@@ -106,14 +110,44 @@ var player = {
         function(data){
             if('undefined' === typeof data.error){
                 log(player.name + ' just made ' + data + 'pts');
-                map.update();
+                map.get();
             }
         });
     }
 };
 
 var map = {
-    update: function(){
+    make: function(colors){
+        var table, row, col, rowIdx, colIdx;
+        table = $('<table>');
+        for(rowIdx = map.top; rowIdx < map.bottom; rowIdx++){
+            row = $('<tr>').addClass('row' + rowIdx).appendTo(table);
+            for(colIdx = map.left; colIdx < map.right; colIdx++){
+                cell = $('<td>').addClass('col' + colIdx).appendTo(row);
+                try{cell.css('background-color', colors[rowIdx][colIdx]);}
+                catch(e){;}
+            }
+        }
+        map.mapDiv.empty().append(table);
+        map.posEl.text(map.level + ' - [' + map.top + ':' + map.bottom + '][' + map.left + ':' + map.right + ']');
+        map.colors = colors;
+    },
+    update: function(colors){
+        var row, rowIdx, colIdx;
+        for(rowIdx = map.top; rowIdx < map.bottom; rowIdx++){
+            row = map.mapDiv.find('table tr.row' + rowIdx);
+            for(colIdx = map.left; colIdx < map.right; colIdx++){
+                var oldColor, color;
+                try{oldColor = map.colors[rowIdx][colIdx];}
+                catch(e){oldColor = 'transparent';}
+                try{color = colors[rowIdx][colIdx];}
+                catch(e){color = 'transparent';}
+                if(oldColor !== color) row.find('td.col' + colIdx).css('background-color', color);
+            }
+        }
+        map.colors = colors;
+    },
+    get: function(recreate){
         get(
             'map.jsonp' +
             '?level=' + map.level +
@@ -123,21 +157,10 @@ var map = {
             '&right=' + map.right +
             ('string' === typeof player.nameEsc ? '&name=' + player.nameEsc : ''),
         function(data){
-            var table, row, col, rowIdx, colIdx;
             if('number' === typeof data.stakes) player.stakesSpan.text(parseInt(data.stakes, 10));
             if('number' === typeof data.ownerships) player.ownedSpan.text(data.ownerships);
-            table = $('<table>');
-            for(rowIdx = map.top; rowIdx < map.bottom; rowIdx++){
-                row = $('<tr>').addClass('row' + rowIdx).appendTo(table);
-                for(colIdx = map.left; colIdx < map.right; colIdx++){
-                    cell = $('<td>').addClass('col' + colIdx).appendTo(row);
-                    data && data.colors && data.colors[rowIdx] && data.colors[rowIdx][colIdx] && cell.css(
-                        'background-color', data.colors[rowIdx][colIdx]
-                    );
-                }
-            }
-            map.mapDiv.empty().append(table);
-            map.posEl.text(map.level + ' - [' + map.top + ':' + map.bottom + '][' + map.left + ':' + map.right + ']');
+            if(true === recreate || 0 === map.mapDiv.find('table').size()) map.make(data.colors);
+            else map.update(data.colors);
         });
     }
 };
@@ -175,7 +198,7 @@ $(function(){
         map.left = map.pos[3];
         map.right = map.pos[4];
     }catch(e){
-        log(e);
+        log(['caught', e]);
         map.level = 0;
         map.top = 0;
         map.bottom = 9;
@@ -190,7 +213,7 @@ $(function(){
         player.claim(row, col, 1);
     });
     map.posEl = $('#curpos');
-    map.update();
+    map.get();
 });
         </script>
     </head>

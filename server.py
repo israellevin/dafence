@@ -26,13 +26,13 @@ class Player(object):
         self.updatetime = time()
     def getstakes(self):
         now = time()
-        self.stakes += len(self.ownerships) * 0.1 * (now - self.updatetime)
+        self.stakes += len(self.ownerships) * 0.05 * (now - self.updatetime)
         self.updatetime = now
         return self.stakes
     def surrender(self, pos):
         self.getstakes()
         self.ownerships.remove(pos)
-players = {'root': Player('root', 'blue')}
+players = {'root': Player('root', 'rgb(0, 0, 255)')}
 
 claimrange = 5
 def claim(player, level, row, col, power):
@@ -108,7 +108,7 @@ def handleplayer(args):
     except KeyError:
         try: player = players[name] = Player(name, args['color'][-1])
         except KeyError: return {'error': 'No color specified'}
-    return (player.color, player.stakes)
+    return {'color': player.color, 'stakes': player.stakes, 'ownerships': len(player.ownerships)}
 
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 from urlparse import urlparse, parse_qs
