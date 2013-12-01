@@ -108,9 +108,9 @@ var player = {
             '&col=' + col +
             '&pow=' + pow,
         function(data){
-            if('undefined' === typeof data.error){
+            if('number' === typeof data){
                 log(player.name + ' just made ' + data + 'pts');
-                map.get();
+                if(parseInt(player.ownedSpan.text, 10) / map.zoom > 9) map.zoom *= 1.5;
             }
         });
     }
@@ -128,7 +128,7 @@ var map = {
                 catch(e){;}
             }
         }
-        map.mapDiv.empty().append(table);
+        map.mapDiv.append(table);
         map.posEl.text(map.level + ' - [' + map.top + ':' + map.bottom + '][' + map.left + ':' + map.right + ']');
         map.colors = colors;
     },
@@ -147,7 +147,23 @@ var map = {
         }
         map.colors = colors;
     },
-    get: function(recreate){
+    get: function(){
+        var
+            halfWidth = 0.5 * (map.right - map.left),
+            halfHeight = 0.5 * (map.bottom - map.top),
+            center = {left: halfWidth, top: halfHeight},
+            owned = parseInt(player.ownedSpan.text(), 10);
+        if(owned > halfWidth * halfHeight){
+            halfHeight = Math.round(1.2 * halfHeight);
+            halfWidth = Math.round(1.2 * halfWidth);
+
+            map.top = Math.round(center.top - halfHeight);
+            map.bottom = Math.round(center.top + halfHeight);
+            map.left = Math.round(center.left - halfWidth);
+            map.right = Math.round(center.left + halfWidth);
+            map.mapDiv.empty();
+        }
+
         get(
             'map.jsonp' +
             '?level=' + map.level +
@@ -159,9 +175,21 @@ var map = {
         function(data){
             if('number' === typeof data.stakes) player.stakesSpan.text(parseInt(data.stakes, 10));
             if('number' === typeof data.ownerships) player.ownedSpan.text(data.ownerships);
-            if(true === recreate || 0 === map.mapDiv.find('table').size()) map.make(data.colors);
+            if(0 === map.mapDiv.find('table').size()) map.make(data.colors);
             else map.update(data.colors);
+            map.get();
         });
+    },
+    zoom: function(factor, center){
+        var
+            halfFact = factor / 2,
+            width = halfFact * (map.right - map.left),
+            height = halfFact * (map.bottom - map.top);
+        map.top = Math.round(center.top - height);
+        map.bottom = Math.round(center.top + height);
+        map.left = Math.round(center.left - width);
+        map.right = Math.round(center.left + width);
+        map.mapDiv.empty();
     }
 };
 
